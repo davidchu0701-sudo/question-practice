@@ -1,0 +1,8 @@
+services:
+  - type: web
+    name: junior-high-practice
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python practice.py
+    plan: free
+    autoDeploy: true

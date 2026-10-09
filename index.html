@@ -1,0 +1,1690 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>國中題庫 - AI 智慧複習系統</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Vue 3 CDN -->
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <!-- QRCode.js CDN for LAN mobile sharing -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#eff6ff',
+              100: '#dbeafe',
+              500: '#3b82f6',
+              600: '#2563eb',
+              700: '#1d4ed8'
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body {
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;
+    }
+    .custom-scroll::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    .custom-scroll::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 9999px;
+    }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col font-sans">
+  <div id="app" class="flex-1 flex flex-col max-w-4xl w-full mx-auto pb-24 md:pb-8">
+    
+    <!-- 頂部導航列 -->
+    <header class="bg-white border-b border-slate-200 sticky top-0 z-30 px-3 sm:px-4 py-2.5 shadow-xs">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center space-x-2">
+          <span class="text-2xl">🎓</span>
+          <div>
+            <h1 class="text-base sm:text-lg font-bold text-slate-800 leading-tight">國中題庫 AI 複習</h1>
+            <p class="text-[11px] text-slate-500 hidden sm:block">多張考卷批量提取・外出隨身雲端連線・純文字出題</p>
+          </div>
+        </div>
+
+        <div class="flex items-center space-x-1.5 sm:space-x-2">
+          <!-- 1. AI 剩餘額度徽章 (點擊可看詳情) -->
+          <button @click="openQuotaModal"
+            class="flex items-center space-x-1 px-2.5 py-1.5 text-xs font-bold rounded-lg border transition shadow-2xs"
+            :class="quota.today_remaining > 100 ? 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100' : (quota.today_remaining > 20 ? 'bg-amber-50 text-amber-800 border-amber-200' : 'bg-rose-50 text-rose-800 border-rose-200')">
+            <span>⚡</span>
+            <span>額度: 剩 {{ quota.today_remaining }} 次</span>
+          </button>
+
+          <!-- 2. 手機/外出公網連線按鈕 -->
+          <button @click="openMobileModal" class="flex items-center space-x-1 px-2.5 py-1.5 text-xs font-bold bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg border border-blue-200 transition">
+            <span>🌐</span>
+            <span class="hidden sm:inline">外出/手機連線</span>
+            <span class="sm:hidden">外出連線</span>
+            <span v-if="settings.public_url" class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+          </button>
+
+          <!-- 3. API 設定按鈕 -->
+          <button @click="showSettingsModal = true" class="flex items-center space-x-1 px-2.5 py-1.5 text-xs font-medium bg-slate-100 text-slate-700 hover:bg-slate-200 rounded-lg border border-slate-200 transition">
+            <span>⚙️</span>
+            <span class="hidden sm:inline">設定</span>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- 頁籤導覽 (電腦版顯示在頂部，手機版固定在底部) -->
+    <nav class="hidden md:flex bg-white border-b border-slate-200 px-4 py-2 space-x-2">
+      <button v-for="tab in tabs" :key="tab.id" @click="currentTab = tab.id"
+        :class="[currentTab === tab.id ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100']"
+        class="flex items-center space-x-2 px-4 py-2 rounded-lg text-sm font-semibold transition">
+        <span>{{ tab.icon }}</span>
+        <span>{{ tab.name }}</span>
+      </button>
+    </nav>
+
+    <!-- 主內容區塊 -->
+    <main class="flex-1 p-3 sm:p-5">
+
+      <!-- ============================================== -->
+      <!-- TAB 1: 複習測驗 (Quiz Practice - 文字出題) -->
+      <!-- ============================================== -->
+      <section v-if="currentTab === 'quiz'" class="space-y-4">
+        
+        <!-- 階段 1: 測驗設定與科目選擇 -->
+        <div v-if="quizState === 'setup'" class="bg-white rounded-2xl shadow-xs border border-slate-200 p-5 space-y-6">
+          <div class="border-b border-slate-100 pb-3">
+            <h2 class="text-lg font-bold text-slate-800 flex items-center space-x-2">
+              <span>🎯</span>
+              <span>選擇測驗科目與單元</span>
+            </h2>
+            <p class="text-xs text-slate-500 mt-1">出題以「清晰文字排版」呈現，點選選項直接作答，不再是一整張看不清的拍照考卷！</p>
+          </div>
+
+          <!-- 科目選單 -->
+          <div>
+            <label class="block text-sm font-semibold text-slate-700 mb-2">1. 選擇科目</label>
+            <div class="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-2.5">
+              <button v-for="sub in subjects" :key="sub.name" @click="selectQuizSubject(sub.name)"
+                :class="[quizConfig.subject === sub.name ? 'border-blue-500 bg-blue-50 text-blue-700 ring-2 ring-blue-500' : 'border-slate-200 hover:border-slate-300 text-slate-700 bg-white']"
+                class="flex flex-col items-center justify-center p-3 rounded-xl border text-center transition shadow-2xs">
+                <span class="text-2xl mb-1">{{ sub.icon }}</span>
+                <span class="font-bold text-sm">{{ sub.name }}</span>
+                <span class="text-[11px] text-slate-400 mt-0.5">{{ sub.count }} 題</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- 模式與單元選擇 -->
+          <div v-if="quizConfig.subject" class="space-y-4 pt-2 border-t border-slate-100">
+            <div>
+              <label class="block text-sm font-semibold text-slate-700 mb-2">2. 出題模式</label>
+              <div class="grid grid-cols-2 gap-3">
+                <button @click="quizConfig.mode = 'units'"
+                  :class="[quizConfig.mode === 'units' ? 'border-blue-500 bg-blue-50 text-blue-700 font-bold ring-2 ring-blue-500' : 'border-slate-200 text-slate-600 bg-white']"
+                  class="p-3 rounded-xl border flex flex-col items-center text-center transition">
+                  <span class="text-xl mb-1">📌</span>
+                  <span class="text-sm">單元測驗</span>
+                  <span class="text-[11px] text-slate-400">自選單元加強練習</span>
+                </button>
+                <button @click="quizConfig.mode = 'review'"
+                  :class="[quizConfig.mode === 'review' ? 'border-blue-500 bg-blue-50 text-blue-700 font-bold ring-2 ring-blue-500' : 'border-slate-200 text-slate-600 bg-white']"
+                  class="p-3 rounded-xl border flex flex-col items-center text-center transition">
+                  <span class="text-xl mb-1">🏆</span>
+                  <span class="text-sm">總複習 (綜合出題)</span>
+                  <span class="text-[11px] text-slate-400">跨單元多章節綜合出題</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- 自選單元清單 (若是單元測驗模式) -->
+            <div v-if="quizConfig.mode === 'units'" class="space-y-2">
+              <div class="flex items-center justify-between">
+                <label class="text-sm font-semibold text-slate-700">3. 勾選出題單元 (可多選)</label>
+                <button @click="toggleSelectAllUnits" class="text-xs text-blue-600 hover:underline">
+                  {{ quizConfig.selectedUnits.length === currentSubjectUnits.length ? '取消全選' : '全選' }}
+                </button>
+              </div>
+              <div v-if="currentSubjectUnits.length === 0" class="p-4 bg-slate-50 text-slate-400 rounded-xl text-center text-xs">
+                此科目尚未建立任何單元題庫，請先前往「拍照提取入庫」新增題目！
+              </div>
+              <div v-else class="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto custom-scroll p-1">
+                <label v-for="u in currentSubjectUnits" :key="u"
+                  class="flex items-center space-x-2 p-2.5 rounded-lg border border-slate-200 bg-slate-50/50 hover:bg-slate-100 cursor-pointer text-xs transition">
+                  <input type="checkbox" :value="u" v-model="quizConfig.selectedUnits" class="w-4 h-4 text-blue-600 rounded">
+                  <span class="truncate font-medium text-slate-700">{{ u }}</span>
+                </label>
+              </div>
+            </div>
+
+            <!-- 出題題數設定 -->
+            <div class="flex flex-wrap items-center justify-between gap-3 pt-2">
+              <div>
+                <label class="block text-xs font-semibold text-slate-600 mb-1">題數設定</label>
+                <div class="inline-flex rounded-lg border border-slate-200 p-0.5 bg-slate-100 text-xs">
+                  <button v-for="cnt in [5, 10, 20, 999]" :key="cnt" @click="quizConfig.limit = cnt"
+                    :class="[quizConfig.limit === cnt ? 'bg-white text-blue-600 shadow-2xs font-bold' : 'text-slate-600']"
+                    class="px-3 py-1.5 rounded-md transition">
+                    {{ cnt === 999 ? '全部' : cnt + ' 題' }}
+                  </button>
+                </div>
+              </div>
+
+              <div class="flex items-center space-x-2">
+                <label class="text-xs font-semibold text-slate-600">隨機抽題</label>
+                <input type="checkbox" v-model="quizConfig.random" class="w-4 h-4 text-blue-600 rounded">
+              </div>
+            </div>
+
+            <!-- 開始測驗按鈕 -->
+            <div class="pt-3">
+              <button @click="startQuiz" :disabled="isStartingQuiz"
+                class="w-full py-3.5 bg-blue-600 hover:bg-blue-700 active:scale-[0.99] disabled:bg-slate-300 text-white font-bold rounded-xl shadow-md transition flex items-center justify-center space-x-2 text-base">
+                <span v-if="isStartingQuiz" class="animate-spin">⏳</span>
+                <span v-else>🚀</span>
+                <span>{{ isStartingQuiz ? '正在準備試卷...' : '開始測驗作答' }}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 階段 2: 測驗作答中 (In Practice - 純文字出題與連同圖片呈現) -->
+        <div v-else-if="quizState === 'practicing'" class="space-y-4">
+          <!-- 題目進度條與資訊 -->
+          <div class="bg-white rounded-xl shadow-xs border border-slate-200 p-3.5 flex items-center justify-between">
+            <div class="flex items-center space-x-2">
+              <span class="px-2.5 py-1 text-xs font-bold bg-blue-100 text-blue-800 rounded-lg">
+                {{ currentQuizQuestion.subject }}
+              </span>
+              <span class="text-xs font-medium text-slate-500 truncate max-w-[140px] sm:max-w-xs">
+                {{ currentQuizQuestion.unit }}
+              </span>
+            </div>
+            <div class="flex items-center space-x-2">
+              <span class="text-xs font-bold text-slate-700">
+                第 {{ currentQuestionIndex + 1 }} / {{ quizQuestions.length }} 題
+              </span>
+              <button @click="confirmExitQuiz" class="text-xs text-rose-500 hover:underline">結束作答</button>
+            </div>
+          </div>
+
+          <!-- 題目主要卡片 -->
+          <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+            
+            <!-- 題幹文字與插圖直接呈現 -->
+            <div class="p-5 sm:p-6 border-b border-slate-100 space-y-3">
+              <div class="flex items-center justify-between text-xs text-slate-400">
+                <span class="font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded">第 {{ currentQuestionIndex + 1 }} 題</span>
+                <span v-if="currentQuizQuestion.notes" class="text-slate-400">{{ currentQuizQuestion.notes }}</span>
+              </div>
+              
+              <!-- 核心題幹文字 -->
+              <div class="text-base sm:text-lg font-bold text-slate-900 leading-relaxed whitespace-pre-line">
+                {{ currentQuizQuestion.content || '（題目文字載入中）' }}
+              </div>
+
+              <!-- 若題型有附圖，連同圖片直接在畫面上呈現 -->
+              <div v-if="currentQuizQuestion.image_filename" class="pt-2 flex flex-col items-center sm:items-start">
+                <div class="bg-slate-50 p-2.5 rounded-xl border border-slate-200 inline-block shadow-2xs">
+                  <img :src="'/uploads/' + currentQuizQuestion.image_filename"
+                    @click="openImageModal('/uploads/' + currentQuizQuestion.image_filename)"
+                    alt="題目插圖"
+                    class="max-h-64 sm:max-h-72 w-auto max-w-full object-contain rounded-lg border border-slate-200 cursor-zoom-in hover:opacity-95 transition bg-white shadow-xs">
+                  <div class="text-[11px] text-slate-400 mt-1.5 flex items-center justify-between px-1">
+                    <span>🖼️ 題目插圖 (點擊可放大)</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 選擇題選項互動卡片 -->
+            <div v-if="currentQuizQuestion.options && currentQuizQuestion.options.length > 0" class="p-4 sm:p-5 bg-slate-50/50 space-y-2.5">
+              <label class="block text-xs font-bold text-slate-600 mb-1">請選擇答案：</label>
+              
+              <div class="grid grid-cols-1 gap-2.5">
+                <div v-for="(opt, oIdx) in currentQuizQuestion.options" :key="oIdx"
+                  @click="selectOption(opt, oIdx)"
+                  :class="[isOptionSelected(opt, oIdx) ? 'border-blue-600 bg-blue-50/80 ring-2 ring-blue-500 shadow-xs' : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50']"
+                  class="p-3.5 rounded-xl border cursor-pointer transition flex items-center space-x-3">
+                  
+                  <span :class="[isOptionSelected(opt, oIdx) ? 'bg-blue-600 text-white font-bold' : 'bg-slate-100 text-slate-700 font-semibold']"
+                    class="w-7 h-7 rounded-lg flex items-center justify-center text-xs shrink-0 transition">
+                    {{ getOptionLetter(opt, oIdx) }}
+                  </span>
+                  
+                  <span class="text-sm text-slate-800 leading-normal flex-1 font-medium">
+                    {{ cleanOptionText(opt) }}
+                  </span>
+                  
+                  <span v-if="isOptionSelected(opt, oIdx)" class="text-blue-600 text-base font-bold shrink-0">✓</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- 非選擇題 / 填空計算輸入 -->
+            <div v-else class="p-4 sm:p-5 space-y-3">
+              <label class="block text-xs font-bold text-slate-600">✍️ 您的作答：</label>
+              <div class="grid grid-cols-4 gap-2">
+                <button v-for="opt in ['A', 'B', 'C', 'D']" :key="opt"
+                  @click="currentAnswers[currentQuizQuestion.id] = opt"
+                  :class="[currentAnswers[currentQuizQuestion.id] === opt ? 'bg-blue-600 text-white font-bold ring-2 ring-blue-600' : 'bg-slate-100 hover:bg-slate-200 text-slate-700']"
+                  class="py-2.5 rounded-xl text-center text-base font-bold transition">
+                  {{ opt }}
+                </button>
+              </div>
+              <div class="relative">
+                <input type="text" v-model="currentAnswers[currentQuizQuestion.id]"
+                  placeholder="輸入答案或計算結果"
+                  class="w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500 focus:outline-hidden transition">
+                <button v-if="currentAnswers[currentQuizQuestion.id]"
+                  @click="currentAnswers[currentQuizQuestion.id] = ''"
+                  class="absolute right-3 top-2.5 text-xs text-slate-400 hover:text-slate-600">
+                  ✕ 清除
+                </button>
+              </div>
+            </div>
+
+            <!-- AI 輔助按鈕工具列 -->
+            <div class="px-4 py-3 bg-slate-50 border-t border-slate-200 flex items-center justify-between gap-2">
+              <div class="flex items-center space-x-2">
+                <button @click="askAiHint" :disabled="loadingAiHint"
+                  class="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 disabled:bg-slate-300 text-white text-xs font-bold rounded-lg shadow-2xs transition flex items-center space-x-1">
+                  <span v-if="loadingAiHint" class="animate-spin">⏳</span>
+                  <span v-else>💡</span>
+                  <span>{{ loadingAiHint ? 'AI 提示中...' : 'AI 提示' }}</span>
+                </button>
+
+                <button @click="askAiSolve" :disabled="loadingAiSolve"
+                  class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white text-xs font-bold rounded-lg shadow-2xs transition flex items-center space-x-1">
+                  <span v-if="loadingAiSolve" class="animate-spin">⏳</span>
+                  <span v-else>📖</span>
+                  <span>{{ loadingAiSolve ? 'AI 解題中...' : 'AI 解答' }}</span>
+                </button>
+              </div>
+
+              <span class="text-[11px] text-slate-400">目前模型：{{ settings.model }}</span>
+            </div>
+
+            <!-- AI 提示顯示區域 -->
+            <div v-if="aiHintText" class="p-4 bg-amber-50/80 border-t border-amber-200 text-amber-950 text-sm space-y-1">
+              <div class="font-bold flex items-center justify-between text-xs text-amber-800">
+                <span class="flex items-center space-x-1">
+                  <span>💡</span>
+                  <span>AI 思考方向與提示：</span>
+                </span>
+                <button @click="aiHintText = ''" class="text-amber-600 hover:text-amber-800 text-xs">關閉</button>
+              </div>
+              <p class="whitespace-pre-line leading-relaxed text-xs sm:text-sm font-sans">{{ aiHintText }}</p>
+            </div>
+
+            <!-- AI 解答顯示區域 -->
+            <div v-if="aiSolveText" class="p-4 bg-indigo-50/90 border-t border-indigo-200 text-indigo-950 text-sm space-y-2">
+              <div class="font-bold flex items-center justify-between text-xs text-indigo-800">
+                <span class="flex items-center space-x-1">
+                  <span>📖</span>
+                  <span>AI 完整解題分析：</span>
+                </span>
+                <button @click="aiSolveText = ''" class="text-indigo-600 hover:text-indigo-800 text-xs">關閉</button>
+              </div>
+              <div class="whitespace-pre-line leading-relaxed text-xs sm:text-sm bg-white p-3 rounded-lg border border-indigo-100 shadow-2xs font-sans">
+                {{ aiSolveText }}
+              </div>
+            </div>
+
+            <!-- 上一題 / 下一題 / 交卷按鈕 -->
+            <div class="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between">
+              <button @click="prevQuestion" :disabled="currentQuestionIndex === 0"
+                class="px-4 py-2 rounded-xl text-xs font-semibold border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 disabled:opacity-40 transition">
+                ⬅️ 上一題
+              </button>
+
+              <div class="flex items-center space-x-2">
+                <button v-if="currentQuestionIndex < quizQuestions.length - 1" @click="nextQuestion"
+                  class="px-4 py-2 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white transition">
+                  下一題 ➡️
+                </button>
+
+                <button @click="submitAndGrade" :disabled="isGrading"
+                  class="px-5 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-400 text-white shadow-xs transition flex items-center space-x-1">
+                  <span v-if="isGrading" class="animate-spin">⏳</span>
+                  <span v-else>📝</span>
+                  <span>{{ isGrading ? 'AI 批改中...' : '交卷並由 AI 批改' }}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 階段 3: 批改結果報告 -->
+        <div v-else-if="quizState === 'result'" class="space-y-4">
+          <div class="bg-gradient-to-br from-blue-600 to-indigo-700 rounded-2xl shadow-lg p-6 text-white text-center space-y-3">
+            <div class="text-xs uppercase tracking-wider text-blue-200 font-semibold">AI 考卷批改報告</div>
+            <div class="text-5xl font-black tracking-tight">
+              {{ gradeReport.score }} <span class="text-2xl font-normal text-blue-200">分</span>
+            </div>
+            <div class="inline-block px-3 py-1 rounded-full text-xs font-bold"
+              :class="[gradeReport.score >= 80 ? 'bg-emerald-500/30 text-emerald-100 border border-emerald-400' : (gradeReport.score >= 60 ? 'bg-amber-500/30 text-amber-100 border border-amber-400' : 'bg-rose-500/30 text-rose-100 border border-rose-400')]">
+              {{ gradeReport.score >= 85 ? '🌟 A++ 精熟掌握' : (gradeReport.score >= 60 ? '👍 B 基礎良好' : '💪 C 再接再厲') }}
+            </div>
+            <div class="flex justify-center space-x-6 text-xs text-blue-100 pt-2 border-t border-blue-500/40">
+              <div>總題數：<span class="font-bold text-white">{{ gradeReport.total }}</span> 題</div>
+              <div>答對：<span class="font-bold text-emerald-300">{{ gradeReport.correct_count }}</span> 題</div>
+              <div>答錯：<span class="font-bold text-rose-300">{{ gradeReport.total - gradeReport.correct_count }}</span> 題</div>
+            </div>
+          </div>
+
+          <div class="flex items-center justify-between gap-2">
+            <button @click="quizState = 'setup'" class="flex-1 py-2.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 font-bold text-xs text-slate-700 transition">
+              🏠 回到測驗選單
+            </button>
+            <button @click="restartSameQuiz" class="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 font-bold text-xs text-white shadow-2xs transition">
+              🔄 再做一次本份試卷
+            </button>
+          </div>
+
+          <!-- 逐題文字訂正與附圖對照 -->
+          <div class="space-y-3">
+            <h3 class="text-sm font-bold text-slate-800 flex items-center space-x-1">
+              <span>📋</span>
+              <span>逐題文字訂正與 AI 解析</span>
+            </h3>
+
+            <div v-for="(item, idx) in gradeReport.results" :key="item.question_id"
+              class="bg-white rounded-xl shadow-2xs border border-slate-200 overflow-hidden">
+              <div class="p-3 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
+                <span class="text-xs font-bold text-slate-700">第 {{ idx + 1 }} 題</span>
+                <span class="px-2.5 py-0.5 rounded-full text-xs font-bold flex items-center space-x-1"
+                  :class="[item.status === 'correct' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700']">
+                  <span>{{ item.status === 'correct' ? '✅ 答對' : '❌ 答錯' }}</span>
+                </span>
+              </div>
+
+              <div class="p-4 space-y-3">
+                <div class="text-sm font-bold text-slate-800">
+                  {{ getQuestionById(item.question_id)?.content }}
+                </div>
+
+                <!-- 題目附圖 (若有) -->
+                <div v-if="getQuestionById(item.question_id)?.image_filename" class="pt-1">
+                  <img :src="'/uploads/' + getQuestionById(item.question_id)?.image_filename"
+                    @click="openImageModal('/uploads/' + getQuestionById(item.question_id)?.image_filename)"
+                    alt="題目附圖"
+                    class="max-h-36 w-auto object-contain rounded-lg border border-slate-200 cursor-zoom-in bg-white shadow-2xs">
+                </div>
+
+                <div class="flex items-center space-x-4 text-xs">
+                  <div>
+                    <span class="font-bold text-slate-500">您的作答：</span>
+                    <span :class="[item.status === 'correct' ? 'text-emerald-600 font-bold' : 'text-rose-600 font-bold']">
+                      {{ item.student_answer || '（未作答）' }}
+                    </span>
+                  </div>
+                  <div>
+                    <span class="font-bold text-slate-500">正確答案：</span>
+                    <span class="text-blue-700 font-bold">{{ item.standard_answer || '詳見解析' }}</span>
+                  </div>
+                </div>
+
+                <div v-if="item.feedback" class="text-xs text-slate-600 bg-slate-50 p-2 rounded-lg border border-slate-100">
+                  💬 <span class="font-medium">{{ item.feedback }}</span>
+                </div>
+
+                <div v-if="item.explanation" class="p-3 bg-blue-50/60 rounded-lg border border-blue-100 text-xs text-slate-700 space-y-1">
+                  <div class="font-bold text-blue-800 flex items-center space-x-1">
+                    <span>💡</span>
+                    <span>AI 詳細解析與訂正：</span>
+                  </div>
+                  <p class="whitespace-pre-line leading-relaxed text-slate-600">{{ item.explanation }}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============================================== -->
+      <!-- TAB 2: 拍照提取入庫 (支援多選照片批量入庫) -->
+      <!-- ============================================== -->
+      <section v-else-if="currentTab === 'add'" class="space-y-4">
+        <div class="bg-white rounded-2xl shadow-xs border border-slate-200 p-5 space-y-5">
+          <div class="border-b border-slate-100 pb-3">
+            <h2 class="text-lg font-bold text-slate-800 flex items-center space-x-2">
+              <span>📸</span>
+              <span>拍照/選取考卷（支援多選照片一次提取）</span>
+            </h2>
+            <p class="text-xs text-slate-500 mt-1">
+              可一次選取多張考卷照片（例如第 1 頁、第 2 頁），AI 將批量分析並自動提取所有題目文字與插圖！
+            </p>
+          </div>
+
+          <!-- 選擇科目與單元 -->
+          <div class="space-y-3">
+            <div>
+              <label class="block text-sm font-semibold text-slate-700 mb-2">1. 選擇科目</label>
+              <div class="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-2">
+                <button v-for="sub in subjects" :key="sub.name" @click="uploadForm.subject = sub.name; onUploadSubjectChange()"
+                  :class="[uploadForm.subject === sub.name ? 'border-blue-500 bg-blue-50 text-blue-700 ring-2 ring-blue-500 font-bold' : 'border-slate-200 text-slate-600 bg-white hover:border-slate-300']"
+                  class="p-2.5 rounded-xl border text-center transition flex flex-col items-center">
+                  <span class="text-xl mb-0.5">{{ sub.icon }}</span>
+                  <span class="text-xs">{{ sub.name }}</span>
+                </button>
+              </div>
+            </div>
+
+            <div class="space-y-1.5">
+              <label class="block text-xs font-semibold text-slate-600">預設單元名稱 (AI 提取時亦會自動依考題推測)</label>
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <select v-model="uploadForm.unit" class="px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white">
+                  <option value="">-- 從既有單元選擇 --</option>
+                  <option v-for="u in currentUploadSubjectUnits" :key="u" :value="u">{{ u }}</option>
+                </select>
+                <input type="text" v-model="uploadForm.newUnit" placeholder="或輸入新單元 (例如: 乘法公式、古希臘文化)"
+                  class="px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white">
+              </div>
+            </div>
+          </div>
+
+          <!-- 2. 照片上傳區域 (支援多選 / 連續拍照) -->
+          <div class="space-y-3 pt-2 border-t border-slate-100">
+            <div class="flex items-center justify-between">
+              <label class="text-sm font-semibold text-slate-700">2. 選取考卷照片 (可多選)</label>
+              <span v-if="uploadedImages.length > 0" class="text-xs font-bold text-blue-600">
+                已選取 {{ uploadedImages.length }} 張照片
+              </span>
+            </div>
+
+            <!-- 上傳按鈕列 -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <!-- 連續拍照 -->
+              <label class="flex flex-col items-center justify-center p-3.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl cursor-pointer shadow-sm active:scale-98 transition text-center">
+                <span class="text-2xl mb-0.5">📷</span>
+                <span class="font-bold text-xs">開啟相機拍照 (可累積拍多張)</span>
+                <span class="text-[10px] text-blue-100">拍完第一張可再拍下一張</span>
+                <input type="file" accept="image/*" capture="environment" @change="handleCameraSnap" class="hidden">
+              </label>
+
+              <!-- 批量多選檔案 -->
+              <label class="flex flex-col items-center justify-center p-3.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded-xl cursor-pointer shadow-2xs active:scale-98 transition text-center">
+                <span class="text-2xl mb-0.5">🖼️</span>
+                <span class="font-bold text-xs">相簿/電腦批量多選 (按住多選)</span>
+                <span class="text-[10px] text-slate-400">支援一次選取多張照片</span>
+                <input type="file" multiple accept="image/*" @change="handleMultipleFileSelect" class="hidden">
+              </label>
+            </div>
+
+            <!-- 照片多選預覽畫廊 -->
+            <div v-if="uploadedImages.length > 0" class="space-y-3 pt-2">
+              <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                <div v-for="(imgItem, idx) in uploadedImages" :key="idx"
+                  class="relative group rounded-xl border border-slate-200 overflow-hidden bg-slate-100 aspect-3/4 flex flex-col justify-between p-1.5 shadow-2xs">
+                  <img :src="imgItem" alt="考卷" class="w-full h-full object-cover rounded-lg">
+                  <div class="absolute top-2 left-2 bg-black/70 text-white text-[10px] font-bold px-1.5 py-0.5 rounded">
+                    第 {{ idx + 1 }} 頁
+                  </div>
+                  <button @click="removeImage(idx)"
+                    class="absolute top-2 right-2 bg-rose-600 hover:bg-rose-700 text-white w-6 h-6 rounded-full flex items-center justify-center text-xs shadow-md">
+                    ✕
+                  </button>
+                </div>
+              </div>
+
+              <!-- 操作功能列 -->
+              <div class="p-4 bg-blue-50 border border-blue-200 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-3">
+                <div class="text-xs text-blue-900">
+                  <div class="font-bold text-sm">✨ 準備提取 {{ uploadedImages.length }} 張考卷內容</div>
+                  <p class="text-blue-700 mt-0.5">AI 將依次辨識所有頁面、自動裁切附圖並拆解題目文字。</p>
+                </div>
+
+                <div class="flex items-center space-x-2 w-full sm:w-auto">
+                  <button @click="clearAllImages" class="px-3 py-2.5 text-xs text-slate-500 hover:text-slate-700 font-semibold">
+                    清空重選
+                  </button>
+                  <button @click="extractAllImages" :disabled="isExtracting"
+                    class="flex-1 sm:flex-none px-5 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white font-bold rounded-xl text-xs shadow-md transition flex items-center justify-center space-x-2">
+                    <span v-if="isExtracting" class="animate-spin">⏳</span>
+                    <span v-else>🤖</span>
+                    <span>{{ isExtracting ? '正在批量提取考題中...' : '啟動 AI 批量提取考卷題目' }}</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- AI 提取出的題目列表預覽與編輯區塊 -->
+          <div v-if="extractedQuestions.length > 0" class="space-y-4 pt-3 border-t border-slate-200">
+            <div class="flex items-center justify-between">
+              <h3 class="text-sm font-bold text-slate-800 flex items-center space-x-1.5">
+                <span>📝</span>
+                <span>AI 成功提取出 {{ extractedQuestions.length }} 道考題：</span>
+              </h3>
+              <span class="text-xs text-emerald-600 font-semibold">可直接在此修改文字或選項</span>
+            </div>
+
+            <!-- 各題卡片 -->
+            <div v-for="(q, qIndex) in extractedQuestions" :key="qIndex"
+              class="p-4 rounded-xl border border-slate-200 bg-white shadow-2xs space-y-3">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-bold bg-blue-100 text-blue-800 px-2 py-0.5 rounded">
+                  第 {{ qIndex + 1 }} 題 ({{ q.question_type === 'choice' ? '選擇題' : '非選/填空' }})
+                </span>
+                <button @click="removeExtractedQuestion(qIndex)" class="text-xs text-rose-500 hover:text-rose-700">
+                  ✕ 刪除此題
+                </button>
+              </div>
+
+              <!-- 題幹編輯 -->
+              <div>
+                <label class="block text-[11px] font-bold text-slate-600 mb-1">題幹文字內容：</label>
+                <textarea v-model="q.content" rows="3"
+                  class="w-full p-2.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:ring-1 focus:ring-blue-500"></textarea>
+              </div>
+
+              <!-- 插圖預覽 (若有附圖) -->
+              <div v-if="q.image_filename" class="space-y-1">
+                <label class="block text-[11px] font-bold text-slate-600">題目插圖：</label>
+                <div class="flex items-center space-x-2">
+                  <img :src="'/uploads/' + q.image_filename" alt="插圖" class="h-20 object-contain rounded border border-slate-200 bg-slate-50">
+                  <button @click="q.image_filename = ''" class="text-xs text-rose-500 hover:underline">移除插圖</button>
+                </div>
+              </div>
+
+              <!-- 選擇題選項 -->
+              <div v-if="q.options && q.options.length > 0" class="space-y-1.5">
+                <label class="block text-[11px] font-bold text-slate-600">選項列表：</label>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                  <input v-for="(opt, optIdx) in q.options" :key="optIdx" type="text"
+                    v-model="q.options[optIdx]"
+                    class="px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-md">
+                </div>
+              </div>
+
+              <!-- 單元與答案 -->
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                <div>
+                  <label class="block text-[11px] font-semibold text-slate-600 mb-1">所屬單元：</label>
+                  <input type="text" v-model="q.suggested_unit" class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-md">
+                </div>
+                <div>
+                  <label class="block text-[11px] font-semibold text-slate-600 mb-1">參考答案：</label>
+                  <input type="text" v-model="q.standard_answer" placeholder="例如: A, B, C, D"
+                    class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-md">
+                </div>
+              </div>
+            </div>
+
+            <!-- 一鍵批次存入題庫 -->
+            <div class="pt-2">
+              <button @click="saveExtractedQuestions" :disabled="isSavingBatch"
+                class="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 active:scale-98 disabled:bg-slate-300 text-white font-bold rounded-xl shadow-md transition flex items-center justify-center space-x-2 text-sm">
+                <span v-if="isSavingBatch" class="animate-spin">⏳</span>
+                <span v-else>💾</span>
+                <span>{{ isSavingBatch ? '正在儲存題目...' : '確認將以上 ' + extractedQuestions.length + ' 題一次存入題庫' }}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============================================== -->
+      <!-- TAB 3: 題庫管理 (Manage Questions) -->
+      <!-- ============================================== -->
+      <section v-else-if="currentTab === 'manage'" class="space-y-4">
+        <!-- 篩選列 -->
+        <div class="bg-white rounded-2xl shadow-xs border border-slate-200 p-4 space-y-3">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <h2 class="text-base font-bold text-slate-800 flex items-center space-x-1">
+              <span>📚</span>
+              <span>題庫列表</span>
+              <span class="text-xs text-slate-400 font-normal ml-1">(共 {{ allQuestions.length }} 題)</span>
+            </h2>
+            <button @click="currentTab = 'add'" class="px-3 py-1.5 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-lg text-xs font-bold transition">
+              ➕ 拍照多選提取考題
+            </button>
+          </div>
+
+          <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-1">
+            <select v-model="manageFilter.subject" @change="onManageSubjectChange" class="px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg">
+              <option value="">全部科目</option>
+              <option v-for="s in subjects" :key="s.name" :value="s.name">{{ s.icon }} {{ s.name }} ({{ s.count }})</option>
+            </select>
+
+            <select v-model="manageFilter.unit" @change="fetchManageQuestions" class="px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg">
+              <option value="">全部單元</option>
+              <option v-for="u in manageUnits" :key="u" :value="u">{{ u }}</option>
+            </select>
+
+            <button @click="fetchManageQuestions" class="col-span-2 sm:col-span-1 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg transition">
+              🔄 重新整理
+            </button>
+          </div>
+        </div>
+
+        <!-- 空白狀態提示 -->
+        <div v-if="allQuestions.length === 0" class="bg-white rounded-2xl border border-dashed border-slate-300 p-12 text-center space-y-3">
+          <span class="text-5xl">📭</span>
+          <h3 class="text-base font-bold text-slate-700">目前題庫沒有相符的題目</h3>
+          <p class="text-xs text-slate-400 max-w-sm mx-auto">
+            您可以立刻點選下方按鈕，多選拍照並由 AI 自動提取題目文字！
+          </p>
+          <div class="pt-2 flex justify-center space-x-3">
+            <button @click="currentTab = 'add'" class="px-4 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold shadow-xs hover:bg-blue-700 transition">
+              📷 拍照提取題目
+            </button>
+          </div>
+        </div>
+
+        <!-- 題目格狀卡片清單 (以文字內文為主呈現) -->
+        <div v-else class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div v-for="q in allQuestions" :key="q.id"
+            class="bg-white rounded-xl shadow-2xs border border-slate-200 p-4 flex flex-col justify-between space-y-3 hover:shadow-md transition">
+            
+            <div class="space-y-2">
+              <div class="flex items-center justify-between">
+                <span class="px-2 py-0.5 text-[11px] font-bold bg-blue-600 text-white rounded-md">
+                  {{ q.subject }}
+                </span>
+                <span class="text-xs text-slate-400 truncate max-w-[150px]">{{ q.unit }}</span>
+              </div>
+
+              <!-- 題目文字摘要 -->
+              <p class="text-xs font-bold text-slate-800 line-clamp-3 leading-relaxed">
+                {{ q.content || '（無文字內容）' }}
+              </p>
+
+              <!-- 題目插圖縮圖 (若有) -->
+              <div v-if="q.image_filename" class="pt-1">
+                <img :src="'/uploads/' + q.image_filename" alt="插圖" class="h-20 object-contain rounded border border-slate-200 bg-slate-50 cursor-pointer"
+                  @click="openImageModal('/uploads/' + q.image_filename)">
+              </div>
+
+              <!-- 選項摘要 -->
+              <div v-if="q.options && q.options.length > 0" class="text-[11px] text-slate-500 space-y-0.5 bg-slate-50 p-2 rounded-lg">
+                <div v-for="(opt, idx) in q.options.slice(0, 2)" :key="idx" class="truncate">{{ opt }}</div>
+                <div v-if="q.options.length > 2" class="text-slate-400 text-[10px]">... 共 {{ q.options.length }} 個選項</div>
+              </div>
+
+              <div class="text-[11px] text-slate-400 flex items-center justify-between pt-1">
+                <span v-if="q.standard_answer" class="text-emerald-700 font-bold">答案：{{ q.standard_answer }}</span>
+                <span v-else class="text-slate-400">答案待解析</span>
+              </div>
+            </div>
+
+            <!-- 操作按鈕 -->
+            <div class="pt-2 border-t border-slate-100 flex items-center justify-between">
+              <button @click="startSinglePractice(q)" class="text-xs text-blue-600 hover:text-blue-800 font-semibold">
+                🎯 立即做這題
+              </button>
+              <button @click="deleteQuestion(q.id)" class="text-xs text-rose-500 hover:text-rose-700 font-semibold">
+                🗑️ 刪除
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </main>
+
+    <!-- 手機版底部導覽選單 (Mobile Bottom Bar) -->
+    <nav class="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 z-30 px-3 py-2 flex items-center justify-around shadow-lg">
+      <button v-for="tab in tabs" :key="tab.id" @click="currentTab = tab.id"
+        :class="[currentTab === tab.id ? 'text-blue-600 font-bold' : 'text-slate-500']"
+        class="flex flex-col items-center justify-center py-1 flex-1 transition">
+        <span class="text-xl leading-none mb-1">{{ tab.icon }}</span>
+        <span class="text-[11px]">{{ tab.name }}</span>
+      </button>
+    </nav>
+
+    <!-- ============================================== -->
+    <!-- 模態框 1: 外出隨身 / 手機連線 (Cloudflare Tunnel & LAN) -->
+    <!-- ============================================== -->
+    <div v-if="showMobileModal" class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" @click.self="showMobileModal = false">
+      <div class="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-xl custom-scroll max-h-[90vh] overflow-y-auto">
+        <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+          <h3 class="font-bold text-base text-slate-800 flex items-center space-x-1.5">
+            <span>🌐</span>
+            <span>隨身連線・手機與平板隨時做題</span>
+          </h3>
+          <button @click="showMobileModal = false" class="text-slate-400 hover:text-slate-600 text-lg">✕</button>
+        </div>
+        
+        <!-- 外出公網網址 (免同一 Wi-Fi) -->
+        <div class="space-y-3">
+          <div class="p-3.5 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border border-blue-200 space-y-2">
+            <div class="flex items-center justify-between">
+              <span class="font-bold text-xs text-blue-900 flex items-center space-x-1">
+                <span>🚀</span>
+                <span>外出公網網址 (推薦！免同 Wi-Fi、4G/5G 隨時可連)</span>
+              </span>
+              <span v-if="settings.public_url" class="px-2 py-0.5 text-[10px] bg-emerald-600 text-white font-bold rounded-full">連線就緒</span>
+            </div>
+
+            <p class="text-[11px] text-slate-600 leading-relaxed">
+              出門在外、學校平板或手機使用行動網路時，用手機相機掃描下方 QR Code 或打開此網址即可隨時連線做題：
+            </p>
+
+            <div v-if="settings.public_url" class="space-y-2.5 pt-1">
+              <div class="flex justify-center">
+                <div id="qrcode-public" class="p-2 border border-blue-200 rounded-xl bg-white shadow-2xs"></div>
+              </div>
+
+              <div class="bg-white p-2.5 rounded-lg border border-blue-200 text-xs font-mono text-blue-900 break-all select-all font-semibold text-center">
+                {{ settings.public_url }}
+              </div>
+
+              <button @click="copyPublicUrl" class="w-full py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition">
+                📋 一鍵複製外出網址傳至手機/LINE
+              </button>
+            </div>
+
+            <div v-else class="p-4 bg-white/80 rounded-lg text-center text-xs text-slate-500 space-y-2">
+              <div class="animate-spin text-xl">⏳</div>
+              <div>正在向 Cloudflare 申請隨身外出加密隧道中...</div>
+              <button @click="fetchSettings" class="text-xs text-blue-600 hover:underline font-bold">點此重新整理檢查</button>
+            </div>
+          </div>
+
+          <!-- 家中同一 Wi-Fi 區網網址 -->
+          <div class="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+            <span class="font-bold text-xs text-slate-700 flex items-center space-x-1">
+              <span>🏠</span>
+              <span>家中同一 Wi-Fi 區域網路 (僅限連同一個 Wi-Fi)</span>
+            </span>
+            <div class="bg-white p-2 rounded border border-slate-200 text-xs font-mono text-slate-700 break-all">
+              {{ localWifiUrl }}
+            </div>
+            <button @click="copyLocalUrl" class="w-full py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded text-xs font-medium">
+              複製 Wi-Fi 網址
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================== -->
+    <!-- 模態框 2: AI 額度詳細統計 (Quota Modal) -->
+    <!-- ============================================== -->
+    <div v-if="showQuotaModal" class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" @click.self="showQuotaModal = false">
+      <div class="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-xl">
+        <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+          <h3 class="font-bold text-base text-slate-800 flex items-center space-x-1.5">
+            <span>⚡</span>
+            <span>AI 額度即時統計</span>
+          </h3>
+          <button @click="showQuotaModal = false" class="text-slate-400 hover:text-slate-600 text-lg">✕</button>
+        </div>
+
+        <div class="space-y-4 text-xs">
+          <!-- 總額度圓條卡片 -->
+          <div class="bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-xl p-4 space-y-2 shadow-xs">
+            <div class="flex items-center justify-between">
+              <span class="text-emerald-100 text-xs">今日剩餘免費請求次數</span>
+              <span class="text-xs bg-white/20 px-2 py-0.5 rounded-full font-bold">充足率 {{ quota.percent_remaining }}%</span>
+            </div>
+            <div class="text-3xl font-black">
+              {{ quota.today_remaining }} <span class="text-sm font-normal text-emerald-100">/ {{ quota.daily_limit }} 次</span>
+            </div>
+            <!-- 進度條 -->
+            <div class="w-full bg-black/20 h-2 rounded-full overflow-hidden">
+              <div class="bg-white h-full transition-all" :style="{ width: quota.percent_remaining + '%' }"></div>
+            </div>
+          </div>
+
+          <!-- 各項功能呼叫次數 -->
+          <div class="space-y-2">
+            <span class="font-bold text-slate-700">今日呼叫明細統計：</span>
+            <div class="grid grid-cols-2 gap-2 text-xs">
+              <div class="p-2.5 bg-slate-50 rounded-lg border border-slate-200">
+                <span class="text-slate-400 block">📸 拍照考題提取</span>
+                <span class="text-sm font-bold text-slate-800">{{ quota.by_action?.extract || 0 }} 次</span>
+              </div>
+              <div class="p-2.5 bg-slate-50 rounded-lg border border-slate-200">
+                <span class="text-slate-400 block">💡 AI 思考提示</span>
+                <span class="text-sm font-bold text-slate-800">{{ quota.by_action?.hint || 0 }} 次</span>
+              </div>
+              <div class="p-2.5 bg-slate-50 rounded-lg border border-slate-200">
+                <span class="text-slate-400 block">📖 AI 完整解答</span>
+                <span class="text-sm font-bold text-slate-800">{{ quota.by_action?.solve || 0 }} 次</span>
+              </div>
+              <div class="p-2.5 bg-slate-50 rounded-lg border border-slate-200">
+                <span class="text-slate-400 block">📝 AI 考卷批改</span>
+                <span class="text-sm font-bold text-slate-800">{{ quota.by_action?.grade || 0 }} 次</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="p-3 bg-blue-50 rounded-xl border border-blue-200 text-blue-900 space-y-1 text-[11px] leading-relaxed">
+            <div class="font-bold">💡 額度說明：</div>
+            <p>
+              • 主力模型 <strong>Gemini 3.5 Flash</strong> 每天享有 1,500 次的充裕免費額度！<br>
+              • {{ quota.reset_time_desc }}。<br>
+              • 系統已啟用多模型備援保護，即使單一模型額度用盡也會自動切換，請放心使用。
+            </p>
+          </div>
+        </div>
+
+        <button @click="fetchQuota" class="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition">
+          🔄 重新整理額度數據
+        </button>
+      </div>
+    </div>
+
+    <!-- ============================================== -->
+    <!-- 模態框 3: AI 設定 (Gemini API Key & Model) -->
+    <!-- ============================================== -->
+    <div v-if="showSettingsModal" class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" @click.self="showSettingsModal = false">
+      <div class="bg-white rounded-2xl max-w-md w-full p-6 space-y-4 shadow-xl">
+        <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+          <h3 class="font-bold text-base text-slate-800 flex items-center space-x-1">
+            <span>⚙️</span>
+            <span>AI 模型設定</span>
+          </h3>
+          <button @click="showSettingsModal = false" class="text-slate-400 hover:text-slate-600">✕</button>
+        </div>
+
+        <div class="space-y-3 text-xs">
+          <div>
+            <label class="block font-semibold text-slate-700 mb-1">Google Gemini API Key</label>
+            <input type="password" v-model="settingsForm.gemini_api_key" placeholder="貼上您的 Gemini API Key"
+              class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-mono text-xs focus:bg-white focus:ring-2 focus:ring-blue-500 focus:outline-hidden">
+            <p class="text-[11px] text-slate-400 mt-1">
+              金鑰狀態：
+              <span v-if="settings.has_key" class="text-emerald-600 font-bold">已設定 ({{ settings.masked_key }})</span>
+              <span v-else class="text-amber-600 font-bold">尚未設定</span>
+            </p>
+          </div>
+
+          <div>
+            <label class="block font-semibold text-slate-700 mb-1">AI 視覺解題模型</label>
+            <select v-model="settingsForm.gemini_model" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium">
+              <option value="gemini-3.5-flash">gemini-3.5-flash (推薦主力！高精準、每日 1,500 次充裕免費額度)</option>
+              <option value="gemini-3.1-flash-lite">gemini-3.1-flash-lite (極速輕量、大配額備援)</option>
+              <option value="gemini-3.8-flash">gemini-3.8-flash (旗艦預覽版，免費版每日限 20 次)</option>
+            </select>
+          </div>
+
+          <div class="bg-emerald-50 p-3 rounded-xl border border-emerald-200 text-emerald-950 space-y-1">
+            <div class="font-bold flex items-center space-x-1">
+              <span>🛡️</span>
+              <span>智慧多模型備援機制已啟用</span>
+            </div>
+            <p class="text-[11px] leading-relaxed text-emerald-800">
+              若某個模型遇到每日額度上限 (429) 或伺服器忙碌，系統會<strong>自動無縫切換至備援模型</strong>，做題與批改不中斷！
+            </p>
+          </div>
+
+          <!-- ngrok 永久固定網址設定 (選項 1) -->
+          <div class="border-t border-slate-200 pt-3 space-y-2">
+            <div class="flex items-center justify-between">
+              <label class="block font-bold text-slate-800 flex items-center space-x-1">
+                <span>🌐</span>
+                <span>ngrok 永久固定專屬網址設定 (免費)</span>
+              </label>
+              <span v-if="settings.has_ngrok_token" class="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full">
+                已綁定固定網址
+              </span>
+            </div>
+            <p class="text-[11px] text-slate-500 leading-relaxed">
+              填入 ngrok 免費 Authtoken 與 Static Domain，網址重開機<strong>永遠固定不變</strong>！
+            </p>
+
+            <div>
+              <label class="block text-[11px] font-semibold text-slate-600 mb-0.5">ngrok Authtoken 金鑰</label>
+              <input type="password" v-model="settingsForm.ngrok_authtoken" placeholder="例如: 2tXYZ... 留空則使用預設"
+                class="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg font-mono text-xs focus:bg-white focus:ring-1 focus:ring-blue-500">
+              <span v-if="settings.has_ngrok_token" class="text-[10px] text-slate-400">目前已設定: {{ settings.masked_ngrok_token }}</span>
+            </div>
+
+            <div>
+              <label class="block text-[11px] font-semibold text-slate-600 mb-0.5">ngrok 固定網域 (Static Domain，選填)</label>
+              <input type="text" v-model="settingsForm.ngrok_domain" placeholder="例如: abc-123.ngrok-free.app"
+                class="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg font-mono text-xs focus:bg-white focus:ring-1 focus:ring-blue-500">
+              <p class="text-[10px] text-slate-400 mt-0.5">若未自訂固定網域，ngrok 也會自動分配固定免費網址。</p>
+            </div>
+          </div>
+
+        <div class="pt-2 flex justify-end space-x-2">
+          <button @click="showSettingsModal = false" class="px-4 py-2 border border-slate-200 text-slate-600 rounded-xl text-xs font-medium hover:bg-slate-50">
+            取消
+          </button>
+          <button @click="saveSettings" :disabled="isSavingSettings" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold">
+            {{ isSavingSettings ? '儲存中...' : '儲存設定' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 模態框 4: 圖片全螢幕放大查看 -->
+    <div v-if="modalImageUrl" class="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-2 sm:p-6" @click="modalImageUrl = ''">
+      <div class="relative max-w-3xl max-h-full">
+        <img :src="modalImageUrl" alt="全螢幕題目" class="max-h-[90vh] max-w-[95vw] object-contain rounded-lg shadow-2xl">
+        <button @click="modalImageUrl = ''" class="absolute -top-3 -right-3 bg-white text-slate-800 rounded-full w-8 h-8 flex items-center justify-center font-bold shadow-lg">
+          ✕
+        </button>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    const { createApp, ref, reactive, computed, onMounted, nextTick } = Vue;
+
+    createApp({
+      setup() {
+        const currentTab = ref('quiz');
+        const tabs = [
+          { id: 'quiz', name: '複習測驗', icon: '🎯' },
+          { id: 'add', name: '拍照提取入庫', icon: '📸' },
+          { id: 'manage', name: '題庫管理', icon: '📚' },
+        ];
+
+        const subjects = ref([
+          { name: '國文', icon: '📖', count: 0 },
+          { name: '英文', icon: '🔤', count: 0 },
+          { name: '數學', icon: '📐', count: 0 },
+          { name: '歷史', icon: '🏛️', count: 0 },
+          { name: '地理', icon: '🗺️', count: 0 },
+          { name: '公民', icon: '⚖️', count: 0 },
+          { name: '生物', icon: '🔬', count: 0 },
+        ]);
+
+        // 設定資料
+        const settings = reactive({
+          has_key: false,
+          masked_key: '',
+          model: 'gemini-3.5-flash',
+          local_ip: '127.0.0.1',
+          port: 8080,
+          public_url: ''
+        });
+        const settingsForm = reactive({
+          gemini_api_key: '',
+          gemini_model: 'gemini-3.5-flash',
+          ngrok_authtoken: '',
+          ngrok_domain: ''
+        });
+        const showSettingsModal = ref(false);
+        const isSavingSettings = ref(false);
+
+        // 外出公網連線模態框
+        const showMobileModal = ref(false);
+        const localWifiUrl = computed(() => `http://${settings.local_ip}:${settings.port}`);
+
+        // AI 額度模態框與數據
+        const showQuotaModal = ref(false);
+        const quota = reactive({
+          current_model: 'gemini-3.5-flash',
+          today_date: '',
+          today_used: 0,
+          daily_limit: 1500,
+          today_remaining: 1500,
+          percent_remaining: 100,
+          by_action: {},
+          reset_time_desc: ''
+        });
+
+        const modalImageUrl = ref('');
+
+        // ==============================================
+        // 拍照入庫與多張照片批量提取
+        // ==============================================
+        const uploadForm = reactive({
+          subject: '歷史',
+          unit: '',
+          newUnit: ''
+        });
+        const currentUploadSubjectUnits = ref([]);
+        const uploadedImages = ref([]); // 多張照片陣列 [base64, base64...]
+        const isExtracting = ref(false);
+        const extractedQuestions = ref([]);
+        const isSavingBatch = ref(false);
+
+        // ==============================================
+        // 測驗設定與作答狀態
+        // ==============================================
+        const quizState = ref('setup');
+        const quizConfig = reactive({
+          subject: '歷史',
+          mode: 'review',
+          selectedUnits: [],
+          limit: 10,
+          random: true
+        });
+        const currentSubjectUnits = ref([]);
+        const isStartingQuiz = ref(false);
+
+        const quizQuestions = ref([]);
+        const currentQuestionIndex = ref(0);
+        const currentAnswers = reactive({});
+        const currentQuizQuestion = computed(() => quizQuestions.value[currentQuestionIndex.value] || {});
+
+        const aiHintText = ref('');
+        const loadingAiHint = ref(false);
+        const aiSolveText = ref('');
+        const loadingAiSolve = ref(false);
+
+        const isGrading = ref(false);
+        const gradeReport = reactive({
+          score: 0,
+          total: 0,
+          correct_count: 0,
+          results: []
+        });
+
+        // 題庫管理
+        const allQuestions = ref([]);
+        const manageUnits = ref([]);
+        const manageFilter = reactive({
+          subject: '',
+          unit: ''
+        });
+
+        // ==============================================
+        // API 呼叫方法
+        // ==============================================
+        const fetchSubjects = async () => {
+          try {
+            const res = await fetch('/api/subjects');
+            subjects.value = await res.json();
+          } catch (e) {
+            console.error(e);
+          }
+        };
+
+        const fetchSettings = async () => {
+          try {
+            const res = await fetch('/api/settings');
+            const data = await res.json();
+            Object.assign(settings, data);
+            settingsForm.gemini_model = data.model;
+            settingsForm.ngrok_domain = data.ngrok_domain || '';
+            renderPublicQrCode();
+          } catch (e) {
+            console.error(e);
+          }
+        };
+
+        const fetchQuota = async () => {
+          try {
+            const res = await fetch('/api/ai/quota');
+            const data = await res.json();
+            Object.assign(quota, data);
+          } catch (e) {
+            console.error(e);
+          }
+        };
+
+        const openQuotaModal = async () => {
+          await fetchQuota();
+          showQuotaModal.value = true;
+        };
+
+        const openMobileModal = async () => {
+          await fetchSettings();
+          showMobileModal.value = true;
+          renderPublicQrCode();
+        };
+
+        const renderPublicQrCode = () => {
+          nextTick(() => {
+            const el = document.getElementById('qrcode-public');
+            if (el && window.QRCode && settings.public_url) {
+              el.innerHTML = '';
+              new QRCode(el, {
+                text: settings.public_url,
+                width: 170,
+                height: 170,
+                colorDark: "#1e293b",
+                colorLight: "#ffffff",
+                correctLevel: QRCode.CorrectLevel.M
+              });
+            }
+          });
+        };
+
+        const copyPublicUrl = () => {
+          if (!settings.public_url) return;
+          navigator.clipboard.writeText(settings.public_url);
+          alert('外出隨身公網網址已複製！您可以直接傳到 LINE、微信或在手機平板瀏覽器開啟。');
+        };
+
+        const copyLocalUrl = () => {
+          navigator.clipboard.writeText(localWifiUrl.value);
+          alert('Wi-Fi 網址已複製到剪貼簿！');
+        };
+
+        const saveSettings = async () => {
+          isSavingSettings.value = true;
+          try {
+            await fetch('/api/settings', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(settingsForm)
+            });
+            await fetchSettings();
+            await fetchQuota();
+            showSettingsModal.value = false;
+            alert('AI 設定儲存成功！');
+          } catch (e) {
+            alert('儲存失敗: ' + e.message);
+          } finally {
+            isSavingSettings.value = false;
+          }
+        };
+
+        // 拍照與多張照片選取處理
+        const onUploadSubjectChange = async () => {
+          if (!uploadForm.subject) return;
+          try {
+            const res = await fetch(`/api/units?subject=${encodeURIComponent(uploadForm.subject)}`);
+            currentUploadSubjectUnits.value = await res.json();
+          } catch (e) {
+            console.error(e);
+          }
+        };
+
+        // 連續拍照 (拍攝一張即加入照片列表)
+        const handleCameraSnap = (e) => {
+          const file = e.target.files[0];
+          if (!file) return;
+          const reader = new FileReader();
+          reader.onload = (event) => {
+            uploadedImages.value.push(event.target.result);
+          };
+          reader.readAsDataURL(file);
+          e.target.value = ''; // 重置以允許連續拍攝
+        };
+
+        // 批量多選照片
+        const handleMultipleFileSelect = (e) => {
+          const files = Array.from(e.target.files || []);
+          if (files.length === 0) return;
+          files.forEach(file => {
+            const reader = new FileReader();
+            reader.onload = (event) => {
+              uploadedImages.value.push(event.target.result);
+            };
+            reader.readAsDataURL(file);
+          });
+          e.target.value = '';
+        };
+
+        // 剪貼簿截圖多張貼上
+        window.addEventListener('paste', (e) => {
+          if (currentTab.value !== 'add') return;
+          const items = e.clipboardData?.items;
+          if (!items) return;
+          for (let item of items) {
+            if (item.type.indexOf('image') !== -1) {
+              const blob = item.getAsFile();
+              const reader = new FileReader();
+              reader.onload = (event) => {
+                uploadedImages.value.push(event.target.result);
+              };
+              reader.readAsDataURL(blob);
+              break;
+            }
+          }
+        });
+
+        const removeImage = (idx) => {
+          uploadedImages.value.splice(idx, 1);
+        };
+
+        const clearAllImages = () => {
+          if (confirm('確定要清空已選取的所有照片嗎？')) {
+            uploadedImages.value = [];
+            extractedQuestions.value = [];
+          }
+        };
+
+        // AI 批量提取考卷題目 (支援一次處理多張照片)
+        const extractAllImages = async () => {
+          if (uploadedImages.value.length === 0) {
+            alert('請先拍攝或選取考卷照片');
+            return;
+          }
+          isExtracting.value = true;
+          try {
+            const res = await fetch('/api/ai/extract', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                images_base64: uploadedImages.value,
+                subject: uploadForm.subject,
+                unit: uploadForm.newUnit || uploadForm.unit
+              })
+            });
+            const data = await res.json();
+            if (data.success && data.data) {
+              const defaultUnit = (uploadForm.newUnit || uploadForm.unit || '綜合複習').trim();
+              extractedQuestions.value = data.data.map(q => ({
+                content: q.content || '',
+                options: q.options || [],
+                question_type: q.question_type || 'choice',
+                suggested_unit: q.suggested_unit || defaultUnit,
+                standard_answer: q.standard_answer || '',
+                image_filename: q.image_filename || '',
+                notes: q.notes || ''
+              }));
+              await fetchQuota();
+              alert(`AI 成功批量分析 ${uploadedImages.value.length} 張照片，共提取出 ${extractedQuestions.value.length} 道考題！請核對文字後儲存。`);
+            } else {
+              alert('提取失敗: ' + (data.message || data.error || '未能識別考題'));
+            }
+          } catch (e) {
+            alert('提取出錯: ' + e.message);
+          } finally {
+            isExtracting.value = false;
+          }
+        };
+
+        const removeExtractedQuestion = (idx) => {
+          extractedQuestions.value.splice(idx, 1);
+        };
+
+        const saveExtractedQuestions = async () => {
+          if (extractedQuestions.value.length === 0) return;
+          isSavingBatch.value = true;
+          try {
+            const listToSave = extractedQuestions.value.map(q => ({
+              subject: uploadForm.subject,
+              unit: q.suggested_unit || uploadForm.newUnit || uploadForm.unit || '第一單元',
+              content: q.content,
+              options: q.options,
+              question_type: q.question_type,
+              standard_answer: q.standard_answer,
+              image_filename: q.image_filename,
+              notes: q.notes
+            }));
+
+            const res = await fetch('/api/questions/batch', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ questions: listToSave })
+            });
+            const data = await res.json();
+            if (data.success) {
+              alert(`成功將 ${data.inserted_count} 題文字題目一次存入題庫！`);
+              uploadedImages.value = [];
+              extractedQuestions.value = [];
+              await fetchSubjects();
+              await fetchManageQuestions();
+              await onUploadSubjectChange();
+              currentTab.value = 'quiz';
+            } else {
+              alert('儲存失敗: ' + (data.error || '請稍後再試'));
+            }
+          } catch (e) {
+            alert('儲存出錯: ' + e.message);
+          } finally {
+            isSavingBatch.value = false;
+          }
+        };
+
+        // 測驗相關
+        const selectQuizSubject = async (subName) => {
+          quizConfig.subject = subName;
+          try {
+            const res = await fetch(`/api/units?subject=${encodeURIComponent(subName)}`);
+            currentSubjectUnits.value = await res.json();
+            quizConfig.selectedUnits = [...currentSubjectUnits.value];
+          } catch (e) {
+            console.error(e);
+          }
+        };
+
+        const toggleSelectAllUnits = () => {
+          if (quizConfig.selectedUnits.length === currentSubjectUnits.value.length) {
+            quizConfig.selectedUnits = [];
+          } else {
+            quizConfig.selectedUnits = [...currentSubjectUnits.value];
+          }
+        };
+
+        const startQuiz = async () => {
+          if (!quizConfig.subject) {
+            alert('請先選擇科目');
+            return;
+          }
+          if (quizConfig.mode === 'units' && quizConfig.selectedUnits.length === 0) {
+            alert('請至少勾選一個出題單元');
+            return;
+          }
+
+          isStartingQuiz.value = true;
+          try {
+            let url = `/api/questions?subject=${encodeURIComponent(quizConfig.subject)}&limit=${quizConfig.limit}&random=${quizConfig.random ? 1 : 0}`;
+            if (quizConfig.mode === 'units') {
+              quizConfig.selectedUnits.forEach(u => {
+                url += `&units[]=${encodeURIComponent(u)}`;
+              });
+            }
+
+            const res = await fetch(url);
+            const questions = await res.json();
+
+            if (!questions || questions.length === 0) {
+              alert('該科目/單元目前沒有題目，請先前往「拍照提取入庫」新增題目！');
+              return;
+            }
+
+            quizQuestions.value = questions;
+            currentQuestionIndex.value = 0;
+            for (let key in currentAnswers) delete currentAnswers[key];
+            aiHintText.value = '';
+            aiSolveText.value = '';
+            quizState.value = 'practicing';
+          } catch (e) {
+            alert('出題失敗: ' + e.message);
+          } finally {
+            isStartingQuiz.value = false;
+          }
+        };
+
+        const prevQuestion = () => {
+          if (currentQuestionIndex.value > 0) {
+            currentQuestionIndex.value--;
+            aiHintText.value = '';
+            aiSolveText.value = '';
+          }
+        };
+
+        const nextQuestion = () => {
+          if (currentQuestionIndex.value < quizQuestions.value.length - 1) {
+            currentQuestionIndex.value++;
+            aiHintText.value = '';
+            aiSolveText.value = '';
+          }
+        };
+
+        const confirmExitQuiz = () => {
+          if (confirm('確定要結束本次測驗作答嗎？未交卷的作答將不會保留。')) {
+            quizState.value = 'setup';
+          }
+        };
+
+        const getOptionLetter = (opt, idx) => {
+          const match = opt.match(/^[(\uff08]?([A-Da-d])[)\uff09\.\u3001]/);
+          if (match) return match[1].toUpperCase();
+          return ['A', 'B', 'C', 'D'][idx] || `${idx + 1}`;
+        };
+
+        const cleanOptionText = (opt) => {
+          return opt.replace(/^[(\uff08]?[A-Da-d][)\uff09\.\u3001\s]+/, '').trim() || opt;
+        };
+
+        const selectOption = (opt, idx) => {
+          const letter = getOptionLetter(opt, idx);
+          currentAnswers[currentQuizQuestion.value.id] = letter;
+        };
+
+        const isOptionSelected = (opt, idx) => {
+          const letter = getOptionLetter(opt, idx);
+          const current = currentAnswers[currentQuizQuestion.value.id];
+          return current && current.toUpperCase() === letter;
+        };
+
+        // AI 提示
+        const askAiHint = async () => {
+          const q = currentQuizQuestion.value;
+          if (!q || !q.id) return;
+          loadingAiHint.value = true;
+          try {
+            const res = await fetch('/api/ai/hint', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ question_id: q.id })
+            });
+            const data = await res.json();
+            if (data.success) {
+              aiHintText.value = data.text;
+              await fetchQuota();
+            } else {
+              aiHintText.value = '提示失敗: ' + (data.message || data.error);
+            }
+          } catch (e) {
+            aiHintText.value = '網路錯誤: ' + e.message;
+          } finally {
+            loadingAiHint.value = false;
+          }
+        };
+
+        // AI 解答
+        const askAiSolve = async () => {
+          const q = currentQuizQuestion.value;
+          if (!q || !q.id) return;
+          loadingAiSolve.value = true;
+          try {
+            const res = await fetch('/api/ai/solve', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ question_id: q.id })
+            });
+            const data = await res.json();
+            if (data.success) {
+              aiSolveText.value = data.text;
+              await fetchQuota();
+            } else {
+              aiSolveText.value = '解題失敗: ' + (data.message || data.error);
+            }
+          } catch (e) {
+            aiSolveText.value = '網路錯誤: ' + e.message;
+          } finally {
+            loadingAiSolve.value = false;
+          }
+        };
+
+        // 交卷並批改
+        const submitAndGrade = async () => {
+          if (!confirm('確認要交卷並由 AI 進行全卷批改嗎？')) return;
+
+          isGrading.value = true;
+          try {
+            const submissions = quizQuestions.value.map(q => ({
+              question_id: q.id,
+              student_answer: currentAnswers[q.id] || ''
+            }));
+
+            const res = await fetch('/api/ai/grade', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ submissions })
+            });
+            const data = await res.json();
+
+            if (data.results) {
+              Object.assign(gradeReport, data);
+              await fetchQuota();
+              quizState.value = 'result';
+            } else {
+              alert('批改發生錯誤: ' + (data.error || '請稍後重試'));
+            }
+          } catch (e) {
+            alert('批改連線失敗: ' + e.message);
+          } finally {
+            isGrading.value = false;
+          }
+        };
+
+        const restartSameQuiz = () => {
+          for (let key in currentAnswers) delete currentAnswers[key];
+          currentQuestionIndex.value = 0;
+          aiHintText.value = '';
+          aiSolveText.value = '';
+          quizState.value = 'practicing';
+        };
+
+        const getQuestionById = (id) => {
+          return quizQuestions.value.find(q => q.id === id) || allQuestions.value.find(q => q.id === id);
+        };
+
+        // 題庫管理
+        const fetchManageQuestions = async () => {
+          try {
+            let url = '/api/questions?';
+            if (manageFilter.subject) url += `subject=${encodeURIComponent(manageFilter.subject)}&`;
+            if (manageFilter.unit) url += `unit=${encodeURIComponent(manageFilter.unit)}&`;
+            const res = await fetch(url);
+            allQuestions.value = await res.json();
+          } catch (e) {
+            console.error(e);
+          }
+        };
+
+        const onManageSubjectChange = async () => {
+          manageFilter.unit = '';
+          if (manageFilter.subject) {
+            const res = await fetch(`/api/units?subject=${encodeURIComponent(manageFilter.subject)}`);
+            manageUnits.value = await res.json();
+          } else {
+            manageUnits.value = [];
+          }
+          await fetchManageQuestions();
+        };
+
+        const deleteQuestion = async (id) => {
+          if (!confirm('確定要從題庫刪除這道題目嗎？刪除後無法復原。')) return;
+          try {
+            const res = await fetch(`/api/questions?id=${id}`, { method: 'DELETE' });
+            const data = await res.json();
+            if (data.success) {
+              await fetchSubjects();
+              await fetchManageQuestions();
+            } else {
+              alert('刪除失敗: ' + data.error);
+            }
+          } catch (e) {
+            alert('刪除失敗: ' + e.message);
+          }
+        };
+
+        const startSinglePractice = (q) => {
+          quizQuestions.value = [q];
+          currentQuestionIndex.value = 0;
+          for (let key in currentAnswers) delete currentAnswers[key];
+          aiHintText.value = '';
+          aiSolveText.value = '';
+          quizState.value = 'practicing';
+          currentTab.value = 'quiz';
+        };
+
+        const openImageModal = (url) => {
+          modalImageUrl.value = url;
+        };
+
+        // 自動輪詢更新外出公網網址 (等待 Cloudflare 隧道建立)
+        const pollPublicUrl = () => {
+          if (!settings.public_url) {
+            const timer = setInterval(async () => {
+              await fetchSettings();
+              if (settings.public_url) {
+                clearInterval(timer);
+                renderPublicQrCode();
+              }
+            }, 3000);
+          }
+        };
+
+        onMounted(async () => {
+          await fetchSubjects();
+          await fetchSettings();
+          await fetchQuota();
+          await fetchManageQuestions();
+          await onUploadSubjectChange();
+          await selectQuizSubject('歷史');
+          pollPublicUrl();
+        });
+
+        return {
+          currentTab,
+          tabs,
+          subjects,
+          settings,
+          settingsForm,
+          showSettingsModal,
+          isSavingSettings,
+          saveSettings,
+          // 外出連線與 QR Code
+          showMobileModal,
+          openMobileModal,
+          localWifiUrl,
+          copyPublicUrl,
+          copyLocalUrl,
+          // AI 額度
+          showQuotaModal,
+          openQuotaModal,
+          quota,
+          fetchQuota,
+          // 照片多選批量提取
+          uploadForm,
+          currentUploadSubjectUnits,
+          onUploadSubjectChange,
+          uploadedImages,
+          handleCameraSnap,
+          handleMultipleFileSelect,
+          removeImage,
+          clearAllImages,
+          isExtracting,
+          extractAllImages,
+          extractedQuestions,
+          removeExtractedQuestion,
+          isSavingBatch,
+          saveExtractedQuestions,
+          // 測驗
+          quizState,
+          quizConfig,
+          currentSubjectUnits,
+          selectQuizSubject,
+          toggleSelectAllUnits,
+          isStartingQuiz,
+          startQuiz,
+          quizQuestions,
+          currentQuestionIndex,
+          currentQuizQuestion,
+          currentAnswers,
+          prevQuestion,
+          nextQuestion,
+          confirmExitQuiz,
+          getOptionLetter,
+          cleanOptionText,
+          selectOption,
+          isOptionSelected,
+          // AI 輔助
+          aiHintText,
+          loadingAiHint,
+          askAiHint,
+          aiSolveText,
+          loadingAiSolve,
+          askAiSolve,
+          // 批改
+          isGrading,
+          submitAndGrade,
+          gradeReport,
+          restartSameQuiz,
+          getQuestionById,
+          // 管理
+          allQuestions,
+          manageUnits,
+          manageFilter,
+          onManageSubjectChange,
+          fetchManageQuestions,
+          deleteQuestion,
+          startSinglePractice,
+          modalImageUrl,
+          openImageModal
+        };
+      }
+    }).mount('#app');
+  </script>
+</body>
+</html>
